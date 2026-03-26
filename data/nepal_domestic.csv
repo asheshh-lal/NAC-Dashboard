@@ -1,0 +1,13 @@
+Month,Flights,Passengers,FreightKg,ASKM,RPKM,ATKM,RTKM,SeatFactor,LoadFactor,Punctuality,Reliability,ADU_ABT,ADU_ABU
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+Delay Reason - International,,,,,,,,,,,,,
+Marketing/Customer Service,0.14,,,,,,,,,,,,
+Weather/No Tam/ Bay,0.02,,,,,,,,,,,,
+Engineering,0.07,,,,,,,,,,,,
+Ground Service,0.01,,,,,,,,,,,,
+Nepal Oil Corporation,0.02,,,,,,,,,,,,
+Operations,0.03,,,,,,,,,,,,
+Air Traffic Controller,0.07,,,,,,,,,,,,
+Immigration,0.33,,,,,,,,,,,,
+Other,0.01,,,,,,,,,,,,
