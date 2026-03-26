@@ -1,3 +1,4 @@
+
 import json
 from pathlib import Path
 
@@ -7,308 +8,420 @@ import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
-    page_title="Nepal Airlines Dashboard",
+    page_title="Nepal Airlines vs Druk Air Dashboard",
     page_icon="✈️",
     layout="wide",
 )
 
 BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+IMG_DIR = BASE_DIR / "images"
 
 @st.cache_data
-def load_data():
-    international = pd.read_csv(BASE_DIR / "international_operations.csv")
-    domestic = pd.read_csv(BASE_DIR / "domestic_operations.csv")
-    delay_int = pd.read_csv(BASE_DIR / "international_delay_reasons.csv")
-    delay_dom = pd.read_csv(BASE_DIR / "domestic_delay_reasons.csv")
-    cancel_dom = pd.read_csv(BASE_DIR / "domestic_cancellation_reasons.csv")
-    market_int = pd.read_csv(BASE_DIR / "international_market_share.csv")
-    market_dom = pd.read_csv(BASE_DIR / "domestic_market_share.csv")
-    route_share = pd.read_csv(BASE_DIR / "international_route_share.csv")
-    with open(BASE_DIR / "financial_snapshot.json", "r") as f:
-        financial = json.load(f)
+def load_all():
+    intl = pd.read_csv(DATA_DIR / "nepal_international.csv")
+    dom = pd.read_csv(DATA_DIR / "nepal_domestic.csv")
+    analysis = pd.read_csv(DATA_DIR / "nepal_analysis.csv")
+    delay_int = pd.read_csv(DATA_DIR / "international_delay_reasons.csv")
+    delay_dom = pd.read_csv(DATA_DIR / "domestic_delay_reasons.csv")
+    cancel_dom = pd.read_csv(DATA_DIR / "domestic_cancellation_reasons.csv")
+    market_int = pd.read_csv(DATA_DIR / "international_market_share.csv")
+    market_dom = pd.read_csv(DATA_DIR / "domestic_market_share.csv")
+    route_share = pd.read_csv(DATA_DIR / "international_route_share.csv")
+    with open(DATA_DIR / "nepal_financials.json", "r") as f:
+        nepal_fin = json.load(f)
+    with open(DATA_DIR / "drukair_summary.json", "r") as f:
+        druk = json.load(f)
     return {
-        "international": international,
-        "domestic": domestic,
+        "intl": intl,
+        "dom": dom,
+        "analysis": analysis,
         "delay_int": delay_int,
         "delay_dom": delay_dom,
         "cancel_dom": cancel_dom,
         "market_int": market_int,
         "market_dom": market_dom,
         "route_share": route_share,
-        "financial": financial,
+        "nepal_fin": nepal_fin,
+        "druk": druk,
     }
 
+def fmt_int(x):
+    return f"{int(round(x)):,}"
 
-def fmt_int(value):
-    return f"{int(round(value)):,}"
+def fmt_pct(x):
+    return f"{x:.1%}"
 
+def fmt_money(x, symbol="NPR"):
+    sign = "-" if x < 0 else ""
+    x = abs(float(x))
+    if x >= 1_000_000_000:
+        return f"{sign}{symbol} {x/1_000_000_000:.2f}B"
+    if x >= 1_000_000:
+        return f"{sign}{symbol} {x/1_000_000:.2f}M"
+    return f"{sign}{symbol} {x:,.0f}"
 
-def fmt_pct(value):
-    return f"{value:.1%}"
-
-
-def fmt_npr(value):
-    sign = "-" if value < 0 else ""
-    value = abs(value)
-    if value >= 1_000_000_000:
-        return f"{sign}NPR {value/1_000_000_000:.2f}B"
-    if value >= 1_000_000:
-        return f"{sign}NPR {value/1_000_000:.2f}M"
-    return f"{sign}NPR {value:,.0f}"
-
-
-def kpi_card(title, value, help_text=None):
+def card(title, value, sub=None):
+    extra = f"<div style='font-size:0.85rem;color:#6b7280;margin-top:0.3rem;'>{sub}</div>" if sub else ""
     st.markdown(
         f"""
-        <div style='padding:1rem;border:1px solid #e5e7eb;border-radius:16px;background:#ffffff;'>
-            <div style='font-size:0.9rem;color:#6b7280;'>{title}</div>
-            <div style='font-size:1.8rem;font-weight:700;margin-top:0.2rem;'>{value}</div>
+        <div style="padding:1rem 1.1rem;border:1px solid #e5e7eb;border-radius:18px;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.04);height:100%;">
+            <div style="font-size:0.9rem;color:#6b7280;">{title}</div>
+            <div style="font-size:1.9rem;font-weight:700;line-height:1.2;margin-top:0.25rem;">{value}</div>
+            {extra}
         </div>
         """,
         unsafe_allow_html=True,
-        help=help_text,
     )
 
+data = load_all()
+intl = data["intl"]
+dom = data["dom"]
+analysis = data["analysis"]
+nepal_fin = data["nepal_fin"]
+druk = data["druk"]
 
-def metric_definitions():
-    with st.expander("Metric definitions"):
-        st.markdown(
-            """
-            - **ASKM**: Available Seat Kilometer
-            - **RPKM**: Revenue Passenger Kilometer
-            - **ATKM**: Available Ton Kilometer
-            - **RTKM**: Revenue Ton Kilometer
-            - **Seat Factor**: seat occupancy efficiency
-            - **Load Factor**: combined passenger/cargo utilization indicator used in the report
-            - **ADU**: Average Daily Utilization of aircraft
-            """
-        )
-
-
-data = load_data()
-intl = data["international"]
-dom = data["domestic"]
-financial = data["financial"]
-
-st.title("Nepal Airlines Operations & Financial Dashboard")
-st.caption("Built from FY 2079/80 annual report and financial statement extracts.")
+st.title("Nepal Airlines vs Druk Air Dashboard")
+st.caption("Simple comparison dashboard built from Nepal Airlines FY 2079/80 reports and Drukair Annual Report 2023.")
 
 with st.sidebar:
-    st.header("Controls")
-    sector = st.selectbox("Sector", ["International", "Domestic", "Both"])
-    month_order = list(intl["Month"]) if sector != "Domestic" else list(dom["Month"])
-    selected_months = st.multiselect("Months", month_order, default=month_order)
-    show_financials = st.toggle("Show financial snapshot", value=True)
-    show_route_panel = st.toggle("Show route/market share panels", value=True)
+    st.header("View controls")
+    selected_months = st.multiselect("Nepal months", intl["Month"].tolist(), default=intl["Month"].tolist())
+    show_explanations = st.toggle("Show simple explanations", True)
+    show_tables = st.toggle("Show data tables", False)
+    st.markdown("---")
+    st.markdown("**Audience:** Class 10 level understandable")
+    st.markdown("**Use case:** Minister-style briefing")
 
-metric_definitions()
+intl_f = intl[intl["Month"].isin(selected_months)].copy()
+dom_f = dom[dom["Month"].isin(selected_months)].copy()
 
-if sector == "International":
-    ops = intl[intl["Month"].isin(selected_months)].copy()
-elif sector == "Domestic":
-    ops = dom[dom["Month"].isin(selected_months)].copy()
-else:
-    intl2 = intl[intl["Month"].isin(selected_months)].copy()
-    intl2["Sector"] = "International"
-    dom2 = dom[dom["Month"].isin([m for m in dom["Month"] if m in selected_months or len(selected_months) == len(month_order)])].copy()
-    dom2["Sector"] = "Domestic"
-    ops = pd.concat([intl2, dom2], ignore_index=True)
+hero1, hero2 = st.columns(2)
+with hero1:
+    st.image(str(IMG_DIR / "nepal_airlines_plane.png"), caption="Nepal Airlines", use_container_width=True)
+with hero2:
+    st.image(str(IMG_DIR / "drukair_plane.png"), caption="Druk Air", use_container_width=True)
 
-st.subheader("Executive summary")
-if sector == "Both":
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        kpi_card("Total Flights", fmt_int(ops["Flights"].sum()))
-    with col2:
-        kpi_card("Total Passengers", fmt_int(ops["Passengers"].sum()))
-    with col3:
-        kpi_card("Average Seat Factor", fmt_pct(ops["SeatFactor"].mean()))
-    with col4:
-        kpi_card("Average Reliability", fmt_pct(ops["Reliability"].mean()))
-else:
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        kpi_card("Total Flights", fmt_int(ops["Flights"].sum()))
-    with col2:
-        kpi_card("Total Passengers", fmt_int(ops["Passengers"].sum()))
-    with col3:
-        kpi_card("Total Freight (kg)", fmt_int(ops["FreightKg"].sum()))
-    with col4:
-        kpi_card("Average Seat Factor", fmt_pct(ops["SeatFactor"].mean()))
+tabs = st.tabs([
+    "Overview",
+    "Nepal Airlines Operations",
+    "Nepal Airlines Financials",
+    "Druk Air",
+    "Comparison",
+    "Key Findings",
+])
 
-st.markdown("### Traffic trends")
-left, right = st.columns((1.3, 1))
-with left:
-    if sector == "Both":
-        fig = px.line(
-            ops,
-            x="Month",
-            y="Passengers",
-            color="Sector",
-            markers=True,
-            title="Passengers by month",
+with tabs[0]:
+    st.subheader("Big picture")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        card("Nepal Intl Passengers", fmt_int(intl_f["Passengers"].sum()), "International only")
+    with c2:
+        card("Nepal Domestic Passengers", fmt_int(dom_f["Passengers"].sum()), "Domestic only")
+    with c3:
+        card("Drukair Passengers", fmt_int(druk["passengers"]), "2023 total")
+    with c4:
+        card("Drukair Flights", fmt_int(druk["flights_total"]), "2023 total")
+
+    c5, c6, c7, c8 = st.columns(4)
+    with c5:
+        card("Nepal Intl Avg Seat Factor", fmt_pct(intl_f["SeatFactor"].mean()))
+    with c6:
+        card("Nepal Domestic Avg Seat Factor", fmt_pct(dom_f["SeatFactor"].mean()))
+    with c7:
+        card("Drukair Load Factor", fmt_pct(druk["load_factor"]))
+    with c8:
+        card("Nepal Profit After Tax", fmt_money(nepal_fin["profit_after_tax"], "NPR"), "FY 2079/80")
+
+    compare_df = pd.DataFrame({
+        "Airline": ["Nepal Airlines (Intl)", "Nepal Airlines (Domestic)", "Druk Air"],
+        "Passengers": [intl_f["Passengers"].sum(), dom_f["Passengers"].sum(), druk["passengers"]],
+        "Flights": [intl_f["Flights"].sum(), dom_f["Flights"].sum(), druk["flights_total"]],
+    })
+    left, right = st.columns(2)
+    with left:
+        fig = px.bar(compare_df, x="Airline", y="Passengers", text_auto=True, title="Passenger comparison")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+    with right:
+        fig = px.bar(compare_df, x="Airline", y="Flights", text_auto=True, title="Flight comparison")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if show_explanations:
+        st.info(
+            "Simple reading: Nepal Airlines is much larger in total passenger volume, especially internationally. "
+            "Druk Air is smaller, but its 2023 report shows a strong recovery in flights, passengers, and profitability before tax."
         )
-    else:
-        fig = px.line(ops, x="Month", y=["Flights", "Passengers"], markers=True, title=f"{sector} traffic")
-    fig.update_layout(height=420)
-    st.plotly_chart(fig, use_container_width=True)
-with right:
-    if sector == "Both":
-        grouped = ops.groupby("Sector", as_index=False)[["Passengers", "Flights", "FreightKg"]].sum()
-        fig = px.bar(grouped.melt(id_vars="Sector", var_name="Metric", value_name="Value"), x="Metric", y="Value", color="Sector", barmode="group", title="Sector comparison")
-    else:
-        fig = px.bar(ops, x="Month", y="FreightKg", title=f"{sector} freight by month")
-    fig.update_layout(height=420)
-    st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("### Efficiency and service quality")
-col_a, col_b = st.columns(2)
-with col_a:
-    if sector == "Both":
-        eff = ops.groupby("Sector", as_index=False)[["SeatFactor", "LoadFactor", "Punctuality", "Reliability"]].mean()
-        fig = go.Figure()
-        for metric in ["SeatFactor", "LoadFactor", "Punctuality", "Reliability"]:
-            fig.add_trace(go.Bar(name=metric, x=eff["Sector"], y=eff[metric]))
-        fig.update_layout(barmode="group", title="Average service KPIs", height=420, yaxis_tickformat=".0%")
-    else:
-        fig = px.line(
-            ops,
-            x="Month",
-            y=["SeatFactor", "LoadFactor", "Punctuality", "Reliability"],
-            markers=True,
-            title=f"{sector} KPI trend",
-        )
-        fig.update_layout(height=420, yaxis_tickformat=".0%")
-    st.plotly_chart(fig, use_container_width=True)
-with col_b:
-    if sector == "International":
-        adu_cols = ["ADU_A320_AKW", "ADU_A320_AKX", "ADU_A330_ALY", "ADU_A330_ALZ"]
-    elif sector == "Domestic":
-        adu_cols = ["ADU_ABT", "ADU_ABU"]
-    else:
-        adu_cols = []
+with tabs[1]:
+    st.subheader("Nepal Airlines operations")
+    op_tab1, op_tab2 = st.tabs(["International", "Domestic"])
 
-    if adu_cols:
-        adu_df = ops[["Month"] + adu_cols].melt(id_vars="Month", var_name="Aircraft", value_name="ADU")
-        fig = px.line(adu_df, x="Month", y="ADU", color="Aircraft", markers=True, title="Aircraft utilization")
-    else:
-        util = pd.DataFrame(
-            {
-                "Sector": ["International", "Domestic"],
-                "Avg ASKM": [intl["ASKM"].mean(), dom["ASKM"].mean()],
-                "Avg RPKM": [intl["RPKM"].mean(), dom["RPKM"].mean()],
-            }
-        )
-        fig = px.bar(util.melt(id_vars="Sector", var_name="Metric", value_name="Value"), x="Sector", y="Value", color="Metric", barmode="group", title="Capacity vs realized traffic")
-    fig.update_layout(height=420)
-    st.plotly_chart(fig, use_container_width=True)
+    with op_tab1:
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            card("Flights", fmt_int(intl_f["Flights"].sum()))
+        with k2:
+            card("Passengers", fmt_int(intl_f["Passengers"].sum()))
+        with k3:
+            card("Freight (kg)", fmt_int(intl_f["FreightKg"].sum()))
+        with k4:
+            card("Avg Reliability", fmt_pct(intl_f["Reliability"].mean()))
 
-if show_route_panel:
-    st.markdown("### Delays and market share")
-    col_c, col_d = st.columns(2)
-    with col_c:
-        if sector == "International":
+        left, right = st.columns(2)
+        with left:
+            fig = px.line(intl_f, x="Month", y=["Flights", "Passengers"], markers=True, title="International traffic trend")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            fig = px.line(intl_f, x="Month", y=["SeatFactor", "LoadFactor", "Punctuality", "Reliability"], markers=True, title="International service quality")
+            fig.update_yaxes(tickformat=".0%")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        left, right = st.columns(2)
+        with left:
+            fig = px.bar(intl_f, x="Month", y="FreightKg", title="International freight by month")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            adu_cols = ["ADU_A320_AKW", "ADU_A320_AKX", "ADU_A330_ALY", "ADU_A330_ALZ"]
+            adu_df = intl_f[["Month"] + adu_cols].melt(id_vars="Month", var_name="Aircraft", value_name="Hours")
+            fig = px.line(adu_df, x="Month", y="Hours", color="Aircraft", markers=True, title="Aircraft average daily utilization")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        left, right = st.columns(2)
+        with left:
             fig = px.pie(data["delay_int"], names="Reason", values="Percentage", title="International delay reasons")
-        elif sector == "Domestic":
-            tab1, tab2 = st.tabs(["Delay reasons", "Cancellation reasons"])
-            with tab1:
-                fig1 = px.pie(data["delay_dom"], names="Reason", values="Percentage", title="Domestic delay reasons")
-                st.plotly_chart(fig1, use_container_width=True)
-            with tab2:
-                fig2 = px.pie(data["cancel_dom"], names="Reason", values="Percentage", title="Domestic cancellation reasons")
-                st.plotly_chart(fig2, use_container_width=True)
-            fig = None
-        else:
-            delays = pd.DataFrame({
-                "Category": ["Intl: Immigration", "Intl: SUBS", "Intl: Marketing/Customer", "Dom: Weather/NOTAM", "Dom: ATC"],
-                "Share": [0.33, 0.30, 0.14, 0.54, 0.35]
-            })
-            fig = px.bar(delays, x="Category", y="Share", title="Largest delay drivers", text_auto=".0%")
-            fig.update_yaxes(tickformat=".0%")
-        if fig is not None:
             fig.update_layout(height=420)
             st.plotly_chart(fig, use_container_width=True)
-    with col_d:
-        if sector == "International":
-            fig = px.line(data["market_int"], x="Year", y="MarketShare", markers=True, title="International market share")
-            fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(fig, use_container_width=True)
-            route_fig = px.bar(data["route_share"].melt(id_vars="Route", var_name="Metric", value_name="Share"), x="Route", y="Share", color="Metric", barmode="group", title="Presence in operating sectors")
-            route_fig.update_yaxes(tickformat=".0%")
-            st.plotly_chart(route_fig, use_container_width=True)
-        elif sector == "Domestic":
-            fig = px.line(data["market_dom"], x="Year", y="MarketShare", markers=True, title="Domestic market share")
-            fig.update_yaxes(tickformat=".0%")
-            fig.update_layout(height=420)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            market_compare = pd.DataFrame({
-                "Sector": ["International", "Domestic"],
-                "2022 Market Share": [data["market_int"].iloc[-1]["MarketShare"], data["market_dom"].iloc[-1]["MarketShare"]],
-            })
-            fig = px.bar(market_compare, x="Sector", y="2022 Market Share", text_auto=".1%", title="2022 market share comparison")
+        with right:
+            fig = px.line(data["market_int"], x="Year", y="MarketShare", markers=True, title="International market share trend")
             fig.update_yaxes(tickformat=".0%")
             fig.update_layout(height=420)
             st.plotly_chart(fig, use_container_width=True)
 
-if show_financials:
-    st.markdown("### Financial snapshot")
-    f1, f2, f3, f4 = st.columns(4)
-    with f1:
-        kpi_card("Revenue from operations", fmt_npr(financial["revenue_operations"]))
-    with f2:
-        kpi_card("Operating profit", fmt_npr(financial["operating_profit"]))
-    with f3:
-        kpi_card("Profit after tax", fmt_npr(financial["profit_after_tax"]))
-    with f4:
-        kpi_card("Cash at year end", fmt_npr(financial["cash_end_year"]))
-
-    left_fin, right_fin = st.columns(2)
-    with left_fin:
-        fin_df = pd.DataFrame({
-            "Metric": ["Assets", "Current Liabilities", "Non-current Liabilities", "Equity"],
-            "Value": [financial["assets_current"], financial["current_liabilities"], financial["non_current_liabilities"], financial["equity_current"]],
-        })
-        fig = px.bar(fin_df, x="Metric", y="Value", title="Balance sheet snapshot")
-        fig.update_layout(height=420)
-        st.plotly_chart(fig, use_container_width=True)
-    with right_fin:
-        profit_df = pd.DataFrame({
-            "Year": ["FY 2078/79", "FY 2079/80"],
-            "Profit After Tax": [financial["profit_after_tax_previous"], financial["profit_after_tax"]],
-        })
-        fig = px.bar(profit_df, x="Year", y="Profit After Tax", text_auto=True, title="Loss improvement year over year")
+        route_df = data["route_share"].melt(id_vars="Route", var_name="Metric", value_name="Share")
+        fig = px.bar(route_df, x="Route", y="Share", color="Metric", barmode="group", title="Presence in operating sectors")
+        fig.update_yaxes(tickformat=".0%")
         fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("### Analyst takeaways")
-if sector == "International":
+    with op_tab2:
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            card("Flights", fmt_int(dom_f["Flights"].sum()))
+        with k2:
+            card("Passengers", fmt_int(dom_f["Passengers"].sum()))
+        with k3:
+            card("Freight (kg)", fmt_int(dom_f["FreightKg"].sum()))
+        with k4:
+            card("Avg Reliability", fmt_pct(dom_f["Reliability"].mean()))
+
+        left, right = st.columns(2)
+        with left:
+            fig = px.line(dom_f, x="Month", y=["Flights", "Passengers"], markers=True, title="Domestic traffic trend")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            fig = px.line(dom_f, x="Month", y=["SeatFactor", "LoadFactor", "Punctuality", "Reliability"], markers=True, title="Domestic service quality")
+            fig.update_yaxes(tickformat=".0%")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        left, right = st.columns(2)
+        with left:
+            fig = px.pie(data["delay_dom"], names="Reason", values="Percentage", title="Domestic delay reasons")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            fig = px.pie(data["cancel_dom"], names="Reason", values="Percentage", title="Domestic cancellation reasons")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        left, right = st.columns(2)
+        with left:
+            fig = px.line(data["market_dom"], x="Year", y="MarketShare", markers=True, title="Domestic market share trend")
+            fig.update_yaxes(tickformat=".0%")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with right:
+            adu_cols = ["ADU_ABT", "ADU_ABU"]
+            adu_df = dom_f[["Month"] + adu_cols].melt(id_vars="Month", var_name="Aircraft", value_name="Hours")
+            fig = px.line(adu_df, x="Month", y="Hours", color="Aircraft", markers=True, title="Domestic aircraft utilization")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+    if show_tables:
+        st.dataframe(intl_f, use_container_width=True)
+        st.dataframe(dom_f, use_container_width=True)
+
+with tabs[2]:
+    st.subheader("Nepal Airlines financial snapshot")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        card("Revenue from operations", fmt_money(nepal_fin["revenue_operations"], "NPR"))
+    with c2:
+        card("Operating profit", fmt_money(nepal_fin["operating_profit"], "NPR"))
+    with c3:
+        card("Profit after tax", fmt_money(nepal_fin["profit_after_tax"], "NPR"))
+    with c4:
+        card("Cash at year end", fmt_money(nepal_fin["cash_end_year"], "NPR"))
+
+    left, right = st.columns(2)
+    with left:
+        bal = pd.DataFrame({
+            "Metric": ["Total Assets", "Current Liabilities", "Non-current Liabilities", "Equity"],
+            "Value": [
+                nepal_fin["assets_current"],
+                nepal_fin["current_liabilities"],
+                nepal_fin["non_current_liabilities"],
+                nepal_fin["equity_current"],
+            ]
+        })
+        fig = px.bar(bal, x="Metric", y="Value", title="Balance sheet snapshot")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+    with right:
+        pat = pd.DataFrame({
+            "Year": ["Previous Year", "Current Year"],
+            "Profit After Tax": [nepal_fin["profit_after_tax_previous"], nepal_fin["profit_after_tax"]]
+        })
+        fig = px.bar(pat, x="Year", y="Profit After Tax", text_auto=True, title="Loss improvement year over year")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if show_explanations:
+        st.warning(
+            "Simple reading: Nepal Airlines generated positive operating profit, but still finished the year with a net loss after tax. "
+            "The balance sheet also shows negative equity, so financial recovery is still incomplete."
+        )
+
+with tabs[3]:
+    st.subheader("Druk Air 2023 summary")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        card("Flights", fmt_int(druk["flights_total"]))
+    with c2:
+        card("Passengers", fmt_int(druk["passengers"]))
+    with c3:
+        card("Cargo (kg)", fmt_int(druk["cargo_kg"]))
+    with c4:
+        card("Load factor", fmt_pct(druk["load_factor"]))
+
+    c5, c6, c7, c8 = st.columns(4)
+    with c5:
+        card("Operating revenue", fmt_money(druk["operating_revenue_nu"], "Nu."))
+    with c6:
+        card("Operating profit", fmt_money(druk["operating_profit_nu"], "Nu."))
+    with c7:
+        card("Profit before tax", fmt_money(druk["profit_before_tax_nu"], "Nu."))
+    with c8:
+        card("Profit after tax", fmt_money(druk["profit_after_tax_nu"], "Nu."))
+
+    left, right = st.columns(2)
+    with left:
+        druk_fin = pd.DataFrame({
+            "Metric": ["Total Assets", "Equity", "Non-current Liabilities", "Current Liabilities"],
+            "Value": [
+                druk["total_assets_nu"],
+                druk["equity_nu"],
+                druk["non_current_liabilities_nu"],
+                druk["current_liabilities_nu"],
+            ]
+        })
+        fig = px.bar(druk_fin, x="Metric", y="Value", title="Druk Air financial position")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+    with right:
+        op = pd.DataFrame({
+            "Metric": ["Operating Revenue", "Operating Expenditure", "Operating Profit", "Finance Cost"],
+            "Value": [
+                druk["operating_revenue_nu"],
+                druk["operating_expenditure_nu"],
+                druk["operating_profit_nu"],
+                druk["finance_cost_nu"],
+            ]
+        })
+        fig = px.bar(op, x="Metric", y="Value", title="Druk Air income summary")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+    if show_explanations:
+        st.success(
+            "Simple reading: Druk Air is much smaller than Nepal Airlines, but its 2023 report shows strong recovery. "
+            "Flights and passengers increased sharply, it earned operating profit, and profit before tax turned positive."
+        )
+
+with tabs[4]:
+    st.subheader("Nepal vs Druk Air comparison")
+
+    compare_kpi = pd.DataFrame({
+        "Airline": ["Nepal Airlines Intl", "Druk Air"],
+        "Passengers": [intl["Passengers"].sum(), druk["passengers"]],
+        "Flights": [intl["Flights"].sum(), druk["flights_total"]],
+        "FreightKg": [intl["FreightKg"].sum(), druk["cargo_kg"]],
+    })
+    left, right = st.columns(2)
+    with left:
+        fig = px.bar(compare_kpi.melt(id_vars="Airline", var_name="Metric", value_name="Value"),
+                     x="Metric", y="Value", color="Airline", barmode="group",
+                     title="Scale comparison")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+    with right:
+        ratio = pd.DataFrame({
+            "Metric": ["Load / Seat Factor", "Market Share", "Net Profitability"],
+            "Nepal Airlines": [intl["SeatFactor"].mean(), data["market_int"]["MarketShare"].iloc[-1], nepal_fin["profit_after_tax"] / max(nepal_fin["revenue_operations"], 1)],
+            "Druk Air": [druk["load_factor"], druk["market_share_competitive_routes"], druk["profit_after_tax_nu"] / max(druk["operating_revenue_nu"], 1)],
+        })
+        fig = go.Figure()
+        for col in ["Nepal Airlines", "Druk Air"]:
+            fig.add_trace(go.Bar(name=col, x=ratio["Metric"], y=ratio[col]))
+        fig.update_layout(height=420, barmode="group", title="Efficiency and outcome comparison")
+        fig.update_yaxes(tickformat=".0%")
+        st.plotly_chart(fig, use_container_width=True)
+
+    lessons = pd.DataFrame({
+        "Area": ["Scale", "Punctuality", "Weather Risk", "Commercial Recovery", "Balance Sheet"],
+        "Nepal Airlines": [
+            "Much larger passenger base",
+            "Weak punctuality despite strong reliability",
+            "Domestic heavily weather-affected",
+            "Large international network but market share below 2020 peak",
+            "Negative equity and net loss"
+        ],
+        "Druk Air": [
+            "Smaller but more compact operation",
+            "Report highlights recovery and utilization focus",
+            "Mountain geography remains structural challenge",
+            "Strong post-pandemic recovery in flights and revenue",
+            "Positive equity and positive profit before tax"
+        ]
+    })
+    st.dataframe(lessons, use_container_width=True, hide_index=True)
+
+with tabs[5]:
+    st.subheader("Key findings from Nepal Airlines analysis sheet")
+    for _, row in analysis.iterrows():
+        with st.expander(row["Finding"]):
+            st.markdown(f"**Evidence:** {row['Evidence']}")
+            st.markdown(f"**Likely cause:** {row['Likely Cause']}")
+            st.markdown(f"**Recommended action:** {row['Recommended Actions']}")
+
+    st.markdown("### Short minister briefing")
     st.markdown(
         """
-        1. International reliability is strong overall, but punctuality is materially weaker.
-        2. Magh is the clearest trough month for traffic.
-        3. Delay mix is dominated by immigration and SUBS rather than engineering.
-        4. Market share remains well below the 2020 peak.
-        """
-    )
-elif sector == "Domestic":
-    st.markdown(
-        """
-        1. Domestic volume is much smaller and more volatile than international operations.
-        2. Weather is the main operational risk for both delays and cancellations.
-        3. Punctuality improves strongly in Asar despite a sharp drop in flights.
-        4. Domestic market share remains very low.
-        """
-    )
-else:
-    st.markdown(
-        """
-        1. International operations carry nearly all passenger and freight volume.
-        2. Domestic disruptions are more weather-driven, while international delays are more process-driven.
-        3. The business still posts a net loss despite positive operating profit.
-        4. The dashboard suggests a split management focus: commercial optimization internationally and reliability/risk control domestically.
+        1. Nepal Airlines is much larger in passenger volume than Druk Air, especially on international routes.
+        2. Nepal Airlines' biggest operational weakness in the report is punctuality, not reliability.
+        3. Nepal domestic operations are strongly affected by weather in both delays and cancellations.
+        4. Nepal Airlines improved from the previous year, but still shows net loss and negative equity.
+        5. Druk Air is smaller, but its 2023 report shows strong recovery in traffic, revenue, and profit before tax.
+        6. A practical policy focus for Nepal would be punctuality improvement, weather resilience, and financial restructuring.
         """
     )
 
 st.divider()
-st.caption("Deployment-ready Streamlit app. Use the included README for local run and hosting steps.")
+st.caption("Run locally with: streamlit run app.py")
