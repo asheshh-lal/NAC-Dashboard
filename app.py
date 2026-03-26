@@ -62,17 +62,29 @@ def fmt_money(x, symbol="NPR"):
     return f"{sign}{symbol} {x:,.0f}"
 
 def card(title, value, sub=None):
-    extra = f"<div style='font-size:0.85rem;color:#6b7280;margin-top:0.3rem;'>{sub}</div>" if sub else ""
-    st.markdown(
-        f"""
-        <div style="padding:1rem 1.1rem;border:1px solid #e5e7eb;border-radius:18px;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.04);height:100%;">
-            <div style="font-size:0.9rem;color:#6b7280;">{title}</div>
-            <div style="font-size:1.9rem;font-weight:700;line-height:1.2;margin-top:0.25rem;">{value}</div>
-            {extra}
+    extra = ""
+    if sub:
+        extra = f"<div style='font-size:14px;color:#d1d5db;margin-top:8px;'>{sub}</div>"
+
+    html = f"""
+    <div style='
+        padding:20px;
+        border-radius:20px;
+        background:#1f2937;
+        color:#ffffff;
+        box-shadow:0 4px 14px rgba(0,0,0,0.35);
+        min-height:140px;
+    '>
+        <div style='font-size:16px;color:#9ca3af;margin-bottom:10px;'>
+            {title}
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        <div style='font-size:34px;font-weight:700;color:#ffffff;line-height:1.2;'>
+            {value}
+        </div>
+        {extra}
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 data = load_all()
 intl = data["intl"]
